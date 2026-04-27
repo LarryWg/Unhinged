@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useRef, useState } from "react"
 
 const CHAT_MESSAGES = [
   { model: "gpt2", text: "no thoughts just vibes 💀" },
@@ -63,6 +63,12 @@ function ChatFeed() {
   )
 }
 
+function isValidModel(name: string): boolean {
+  const trimmed = name.trim()
+  if (!trimmed) return false
+  return RANDOM_POOL.includes(trimmed) || trimmed.includes("/")
+}
+
 function ModelSelector({
   models,
   onAdd,
@@ -75,31 +81,100 @@ function ModelSelector({
   onRandom: () => void
 }) {
   const [input, setInput] = useState("")
+  const [open, setOpen] = useState(false)
+  const [highlighted, setHighlighted] = useState(-1)
+  const inputRef = useRef<HTMLInputElement>(null)
   const full = models.length >= 6
 
-  function handleAdd() {
-    const trimmed = input.trim()
+  const suggestions = input.trim()
+    ? RANDOM_POOL.filter(
+        (m) =>
+          m.toLowerCase().includes(input.trim().toLowerCase()) &&
+          !models.includes(m),
+      )
+    : RANDOM_POOL.filter((m) => !models.includes(m))
+
+  function commit(name: string) {
+    const trimmed = name.trim()
     if (!trimmed || full || models.includes(trimmed)) return
+    if (!isValidModel(trimmed)) return
     onAdd(trimmed)
     setInput("")
+    setOpen(false)
+    setHighlighted(-1)
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (!open || suggestions.length === 0) {
+      if (e.key === "Enter") commit(input)
+      return
+    }
+    if (e.key === "ArrowDown") {
+      e.preventDefault()
+      setHighlighted((h) => Math.min(h + 1, suggestions.length - 1))
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault()
+      setHighlighted((h) => Math.max(h - 1, -1))
+    } else if (e.key === "Enter") {
+      e.preventDefault()
+      if (highlighted >= 0) {
+        commit(suggestions[highlighted])
+      } else {
+        commit(input)
+      }
+    } else if (e.key === "Escape") {
+      setOpen(false)
+      setHighlighted(-1)
+    }
   }
 
   return (
     <div className="px-4 py-3 flex flex-col gap-2">
       {/* Input row */}
       <div className="flex gap-1.5">
-        <input
-          className="flex-1 min-w-0 border border-gray-200 rounded px-2.5 py-1.5 text-xs font-mono placeholder-gray-400 focus:outline-none focus:border-gray-400"
-          placeholder="mistralai/Mistral-7B-v0.1"
-          value={input}
-          disabled={full}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-        />
+        <div className="relative flex-1 min-w-0">
+          <input
+            ref={inputRef}
+            className="w-full border border-gray-200 rounded px-2.5 py-1.5 text-xs font-mono placeholder-gray-400 focus:outline-none focus:border-gray-400"
+            placeholder="mistralai/Mistral-7B-v0.1"
+            value={input}
+            disabled={full}
+            autoComplete="off"
+            onChange={(e) => {
+              setInput(e.target.value)
+              setOpen(true)
+              setHighlighted(-1)
+            }}
+            onFocus={() => setOpen(true)}
+            onBlur={() => {
+              // Delay so click on suggestion fires first
+              setTimeout(() => setOpen(false), 120)
+            }}
+            onKeyDown={handleKeyDown}
+          />
+
+          {open && suggestions.length > 0 && !full && (
+            <ul className="absolute z-10 top-full left-0 right-0 mt-0.5 bg-white border border-gray-200 rounded shadow-sm max-h-40 overflow-y-auto">
+              {suggestions.map((m, i) => (
+                <li
+                  key={m}
+                  onMouseDown={() => commit(m)}
+                  onMouseEnter={() => setHighlighted(i)}
+                  className={`px-2.5 py-1.5 text-xs font-mono cursor-pointer truncate ${
+                    i === highlighted ? "bg-gray-100 text-black" : "text-gray-600 hover:bg-gray-50"
+                  }`}
+                >
+                  {m}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
         <button
-          onClick={handleAdd}
-          disabled={full || !input.trim()}
-          className="px-2.5 py-1.5 text-xs font-medium rounded border border-gray-200 hover:border-gray-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          onClick={() => commit(input)}
+          disabled={full || !isValidModel(input)}
+          className="px-2.5 py-1.5 text-xs font-medium rounded border border-gray-200 hover:border-gray-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
         >
           Add
         </button>
@@ -109,7 +184,7 @@ function ModelSelector({
       {models.length > 0 && (
         <ul className="flex flex-col gap-1">
           {models.map((m) => (
-            <li key={m} className="flex items-center justify-between gap-2 group">
+            <li key={m} className="flex items-center justify-between gap-2">
               <span className="text-xs font-mono text-black truncate">{displayName(m)}</span>
               <button
                 onClick={() => onRemove(m)}
