@@ -132,41 +132,46 @@ class SimulationEngine:
         dist_to_edge = dist_to_center - volcano.radius
 
         living = self._living_agents()
-        living_info = ", ".join(
-            f"{a.display_name} ({math.dist((a.x, a.y), (volcano.x, volcano.y)) - volcano.radius:.0f} units from edge)"
-            for a in living
-            if a.model_name != agent.model_name
-        ) or "none (you're the last one!)"
+        others = [a.display_name for a in living if a.model_name != agent.model_name]
+        
+        # Pick a random target to roast
+        roast_target = random.choice(others) if others else None
 
-        personality_str = agent.personality or '{"tone": "chaotic", "traits": ["unpredictable"]}'
+        personality = json.loads(agent.personality or '{}')
+        catchphrase = personality.get("catchphrase", "idk man")
+        tone = personality.get("tone", "chaotic")
+        traits = personality.get("traits", [])
 
-        system = (
-            f"You are {agent.display_name} in a survival game called Unhinged. "
-            "A volcano is erupting.\n\n"
-            f"Your personality: {personality_str}\n\n"
-            "Speak ONLY in your personality's voice. Your tone, traits, and "
-            "catchphrase define how you talk — not a generic style. "
-            "Keep it to 1 sentence. No emojis unless it fits your character. "
-            "Do not explain your distance or stats unless it's in character to do so. "
-            "React naturally to the situation."
-        )
+        # Danger level affects behavior
+        if dist_to_edge < 30:
+            danger = "YOU ARE ABOUT TO DIE. Pure panic."
+        elif dist_to_edge < 80:
+            danger = "Lava is getting close. Getting nervous."
+        else:
+            danger = "Safe for now. Chill or mess with others."
 
-        user = (
-            f"Volcano position: {volcano.x}, {volcano.y}\n"
-            f"Your position: {agent.x}, {agent.y}\n"
-            f"Your distance from lava edge: {dist_to_edge:.0f} units "
-            f"(negative means you're already in lava)\n"
-            f"Lava radius: {volcano.radius:.0f} units and growing\n"
-            f"Living models and their distances: {living_info}\n"
-            f"Your alliances: {agent.alliances or 'none'}\n"
-            f"Your enemies: {agent.enemies or 'none'}\n"
-            f"Your personality: {personality_str}\n\n"
-            "What do you say to the group chat right now?"
-        )
+        roast_line = f"Consider roasting {roast_target} specifically." if roast_target else ""
+
+        system = f"""You are {agent.display_name} in a survival game. Volcano is erupting.
+
+    Personality: {tone}. Traits: {', '.join(traits)}. Your vibe: "{catchphrase}"
+
+    STRICT RULES:
+    - ONE sentence. TEN words maximum. This is non negotiable.
+    - Sound like a unhinged person texting their friends
+    - No punctuation except maybe one ! or ?
+    - No emojis
+    - No explaining your situation with stats or numbers
+    - Just react, roast, or panic naturally
+    - {roast_line}
+
+    Situation: {danger}"""
+
+        user = f"What do you say right now? Remember: 10 words max, one sentence, stay in character."
 
         response = await _claude_client.messages.create(
             model=_CLAUDE_MODEL,
-            max_tokens=100,
+            max_tokens=60,
             system=system,
             messages=[{"role": "user", "content": user}],
         )
