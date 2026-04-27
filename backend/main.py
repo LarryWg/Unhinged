@@ -135,7 +135,7 @@ def place_scenario(req: PlaceScenarioRequest) -> SimulationState:
 
 
 @app.post("/tick", response_model=TickResponse)
-def tick(req: TickRequest) -> TickResponse:
+async def tick(req: TickRequest) -> TickResponse:
     """
     Advance the simulation by one round.
     Returns every event that occurred this tick so the frontend can animate them.
@@ -148,7 +148,7 @@ def tick(req: TickRequest) -> TickResponse:
         raise HTTPException(status_code=409, detail="Simulation is already finished.")
 
     engine = SimulationEngine(sim)
-    result = engine.tick()
+    result = await engine.tick()
 
     # State is mutated in-place by the engine; persist the updated object.
     active_simulations[req.simulation_id] = result.state
@@ -209,7 +209,7 @@ async def simulation_ws(websocket: WebSocket, simulation_id: str) -> None:
                 return
 
             engine = SimulationEngine(sim)
-            result = engine.tick()
+            result = await engine.tick()
             active_simulations[simulation_id] = result.state
 
             await websocket.send_json(result.model_dump())
