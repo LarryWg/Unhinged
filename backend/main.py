@@ -4,6 +4,8 @@ import math
 import random
 import uuid
 from typing import Optional
+from dotenv import load_dotenv
+load_dotenv()
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
