@@ -9,4 +9,4 @@ RUN pip install uv && uv sync --no-dev --frozen
 
 COPY . .
 
-CMD .venv/bin/uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}
+CMD ["sh", "-c", ".venv/bin/uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
