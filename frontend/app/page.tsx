@@ -43,25 +43,36 @@ type SimState = {
   volcano: Volcano | null
 }
 
+const BACKEND_W = 800
+const BACKEND_H = 600
+
 function MapCanvas({
   agents,
   volcano,
   waitingForScenario,
   gameOver,
+  mapSize,
   onMapClick,
 }: {
   agents: Agent[]
   volcano: Volcano | null
   waitingForScenario: boolean
   gameOver: boolean
+  mapSize: { width: number; height: number }
   onMapClick?: (x: number, y: number) => void
 }) {
   const gridSize = 40
 
+  const sx = (bx: number) => (bx / BACKEND_W) * mapSize.width
+  const sy = (by: number) => (by / BACKEND_H) * mapSize.height
+
   function handleClick(e: React.MouseEvent<HTMLDivElement>) {
     if (!waitingForScenario || !onMapClick) return
     const rect = e.currentTarget.getBoundingClientRect()
-    onMapClick(Math.round(e.clientX - rect.left), Math.round(e.clientY - rect.top))
+    // Convert screen click → backend coords before sending
+    const backendX = Math.round(((e.clientX - rect.left) / mapSize.width) * BACKEND_W)
+    const backendY = Math.round(((e.clientY - rect.top) / mapSize.height) * BACKEND_H)
+    onMapClick(backendX, backendY)
   }
 
   return (
@@ -92,10 +103,10 @@ function MapCanvas({
         <div
           className="absolute rounded-full pointer-events-none"
           style={{
-            left: volcano.x,
-            top: volcano.y,
-            width: volcano.radius * 2,
-            height: volcano.radius * 2,
+            left: sx(volcano.x),
+            top: sy(volcano.y),
+            width: sx(volcano.radius) * 2,
+            height: sy(volcano.radius) * 2,
             transform: "translate(-50%, -50%)",
             backgroundColor: "rgba(239,68,68,0.3)",
           }}
@@ -107,8 +118,8 @@ function MapCanvas({
         <div
           className="absolute rounded-full pointer-events-none"
           style={{
-            left: volcano.x,
-            top: volcano.y,
+            left: sx(volcano.x),
+            top: sy(volcano.y),
             width: 8,
             height: 8,
             transform: "translate(-50%, -50%)",
@@ -123,8 +134,8 @@ function MapCanvas({
           key={agent.model_name}
           className="absolute flex flex-col items-center pointer-events-none"
           style={{
-            left: agent.x,
-            top: agent.y,
+            left: sx(agent.x),
+            top: sy(agent.y),
             transform: "translate(-50%, -50%)",
           }}
         >
@@ -141,8 +152,10 @@ function MapCanvas({
       {/* Game over overlay */}
       {gameOver && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <span className="font-mono text-2xl font-bold text-black tracking-tight"
-            style={{ textShadow: "0 0 8px #f5f5f5" }}>
+          <span
+            className="font-mono text-2xl font-bold text-black tracking-tight"
+            style={{ textShadow: "0 0 8px #f5f5f5" }}
+          >
             Game Over
           </span>
         </div>
@@ -328,7 +341,21 @@ export default function Page() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [gameOver, setGameOver] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [mapSize, setMapSize] = useState({ width: BACKEND_W, height: BACKEND_H })
   const wsRef = useRef<WebSocket | null>(null)
+  const mapDivRef = useRef<HTMLDivElement>(null)
+
+  // Keep mapSize in sync with the actual rendered map dimensions
+  useEffect(() => {
+    const el = mapDivRef.current
+    if (!el) return
+    const observer = new ResizeObserver((entries) => {
+      const { width, height } = entries[0].contentRect
+      setMapSize({ width, height })
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
 
   // Close WebSocket on unmount
   useEffect(() => () => { wsRef.current?.close() }, [])
@@ -461,12 +488,13 @@ export default function Page() {
   return (
     <main className="flex h-screen w-screen overflow-hidden bg-white">
       {/* Map — 70% */}
-      <div className="flex-[7] h-full">
+      <div ref={mapDivRef} className="flex-[7] h-full">
         <MapCanvas
           agents={simState?.agents ?? []}
           volcano={simState?.volcano ?? null}
           waitingForScenario={waitingForScenario}
           gameOver={gameOver}
+          mapSize={mapSize}
           onMapClick={handleMapClick}
         />
       </div>
