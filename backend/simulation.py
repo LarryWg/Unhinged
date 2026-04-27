@@ -127,8 +127,10 @@ class SimulationEngine:
         pairs = [
             (a, b)
             for i, a in enumerate(living)
-            for b in living[i + 1 :]
+            for b in living[i + 1:]
             if b.model_name not in a.alliances
+            and len(a.alliances) < 1  # max 1 alliance per model
+            and len(b.alliances) < 1
         ]
 
         for agent_a, agent_b in pairs:
