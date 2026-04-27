@@ -76,10 +76,11 @@ class SimulationEngine:
         # 2. Kill agents inside the new radius
         events.extend(self._apply_lava_damage(volcano))
 
-        # 3. Chat messages for survivors — all Claude calls in parallel
+        # 3. Chat messages — 1-2 randomly chosen survivors per tick, in parallel
         living = self._living_agents()
+        speakers = random.sample(living, min(2, len(living)))
         messages = await asyncio.gather(
-            *[self._generate_message(agent, volcano) for agent in living]
+            *[self._generate_message(agent, volcano) for agent in speakers]
         )
         events.extend(messages)
 
@@ -140,11 +141,14 @@ class SimulationEngine:
         personality_str = agent.personality or '{"tone": "chaotic", "traits": ["unpredictable"]}'
 
         system = (
-            f"You are {agent.display_name}, an AI model in a survival simulation called Unhinged. "
-            "A volcano has erupted and lava is spreading. Stay in character based on your "
-            "personality. Keep responses to 1-2 sentences max. GenZ energy, chaotic, "
-            "can include mild language. React to how close the lava is — if it's far "
-            "you're chill, if it's close you're panicking."
+            f"You are {agent.display_name} in a survival game called Unhinged. "
+            "A volcano is erupting.\n\n"
+            f"Your personality: {personality_str}\n\n"
+            "Speak ONLY in your personality's voice. Your tone, traits, and "
+            "catchphrase define how you talk — not a generic style. "
+            "Keep it to 1 sentence. No emojis unless it fits your character. "
+            "Do not explain your distance or stats unless it's in character to do so. "
+            "React naturally to the situation."
         )
 
         user = (
