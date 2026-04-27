@@ -380,7 +380,7 @@ export default function Page() {
     if (models.length < 2 || loading) return
     setLoading(true)
     try {
-      const res = await fetch("http://unhinged-production-6999.up.railway.app/start-simulation", {
+      const res = await fetch("https://unhinged-production-6999.up.railway.app/start-simulation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ model_names: models, scenario: "volcano" }),
@@ -457,7 +457,7 @@ export default function Page() {
   async function handleMapClick(x: number, y: number) {
     if (!simState || simState.status !== "waiting_for_scenario") return
     try {
-      const res = await fetch("http://unhinged-production-6999.up.railway.app/place-scenario", {
+      const res = await fetch("https://unhinged-production-6999.up.railway.app/place-scenario", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ simulation_id: simState.simulation_id, x, y }),
