@@ -1,15 +1,16 @@
+import asyncio
+import json
 import math
 import random
 import uuid
 from typing import Optional
-
-import asyncio
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from models import SimulationState, AgentModel, TickResponse, VolcanoScenario
+from personality import generate_personality
 from simulation import SimulationEngine
 
 app = FastAPI(title="Unhinged", version="0.1.0")
@@ -71,9 +72,10 @@ def health() -> dict:
 
 
 @app.post("/start-simulation", response_model=StartSimulationResponse)
-def start_simulation(req: StartSimulationRequest) -> StartSimulationResponse:
+async def start_simulation(req: StartSimulationRequest) -> StartSimulationResponse:
     """
-    Spawn agents at random positions and initialise the simulation.
+    Spawn agents at random positions, generate their personalities in
+    parallel via Claude, and initialise the simulation.
     The volcano position is not set yet — the frontend places it via
     POST /place-scenario once the map is rendered.
     """
@@ -84,6 +86,13 @@ def start_simulation(req: StartSimulationRequest) -> StartSimulationResponse:
         raise HTTPException(status_code=400, detail="Duplicate model names are not allowed.")
 
     agents = _spawn_agents(req.model_names, req.map_width, req.map_height)
+
+    # Fan out all Claude calls concurrently — one per model.
+    personalities = await asyncio.gather(
+        *[generate_personality(name) for name in req.model_names]
+    )
+    for agent, personality in zip(agents, personalities):
+        agent.personality = json.dumps(personality)
 
     state = SimulationState(
         simulation_id=str(uuid.uuid4()),
