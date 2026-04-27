@@ -1,13 +1,6 @@
 "use client"
 
-import { useRef, useState } from "react"
-
-const CHAT_MESSAGES = [
-  { model: "gpt2", text: "no thoughts just vibes 💀" },
-  { model: "Mistral-7B", text: "literally carrying rn" },
-  { model: "gpt2", text: "the lava said what 😭" },
-  { model: "Mistral-7B", text: "forming alliance with nobody lol" },
-]
+import { useEffect, useRef, useState } from "react"
 
 const RANDOM_POOL = [
   "gpt2",
@@ -24,11 +17,59 @@ function displayName(modelName: string) {
   return modelName.split("/").at(-1) ?? modelName
 }
 
-function MapCanvas() {
+type Agent = {
+  model_name: string
+  display_name: string
+  x: number
+  y: number
+  alive: boolean
+}
+
+type Volcano = {
+  x: number
+  y: number
+  radius: number
+}
+
+type ChatMessage = {
+  model: string
+  text: string
+}
+
+type SimState = {
+  simulation_id: string
+  agents: Agent[]
+  status: string
+  volcano: Volcano | null
+}
+
+function MapCanvas({
+  agents,
+  volcano,
+  waitingForScenario,
+  gameOver,
+  onMapClick,
+}: {
+  agents: Agent[]
+  volcano: Volcano | null
+  waitingForScenario: boolean
+  gameOver: boolean
+  onMapClick?: (x: number, y: number) => void
+}) {
   const gridSize = 40
 
+  function handleClick(e: React.MouseEvent<HTMLDivElement>) {
+    if (!waitingForScenario || !onMapClick) return
+    const rect = e.currentTarget.getBoundingClientRect()
+    onMapClick(Math.round(e.clientX - rect.left), Math.round(e.clientY - rect.top))
+  }
+
   return (
-    <div className="relative w-full h-full bg-[#f5f5f5] overflow-hidden">
+    <div
+      className="relative w-full h-full bg-[#f5f5f5] overflow-hidden"
+      style={{ cursor: waitingForScenario ? "crosshair" : "default" }}
+      onClick={handleClick}
+    >
       {/* Vertical grid lines */}
       {Array.from({ length: 50 }).map((_, i) => (
         <div
@@ -45,20 +86,88 @@ function MapCanvas() {
           style={{ top: i * gridSize }}
         />
       ))}
+
+      {/* Volcano lava radius */}
+      {volcano && (
+        <div
+          className="absolute rounded-full pointer-events-none"
+          style={{
+            left: volcano.x,
+            top: volcano.y,
+            width: volcano.radius * 2,
+            height: volcano.radius * 2,
+            transform: "translate(-50%, -50%)",
+            backgroundColor: "rgba(239,68,68,0.3)",
+          }}
+        />
+      )}
+
+      {/* Volcano center dot */}
+      {volcano && (
+        <div
+          className="absolute rounded-full pointer-events-none"
+          style={{
+            left: volcano.x,
+            top: volcano.y,
+            width: 8,
+            height: 8,
+            transform: "translate(-50%, -50%)",
+            backgroundColor: "#ef4444",
+          }}
+        />
+      )}
+
+      {/* Agents — only alive ones */}
+      {agents.filter((a) => a.alive).map((agent) => (
+        <div
+          key={agent.model_name}
+          className="absolute flex flex-col items-center pointer-events-none"
+          style={{
+            left: agent.x,
+            top: agent.y,
+            transform: "translate(-50%, -50%)",
+          }}
+        >
+          <span
+            className="font-mono text-[10px] text-black whitespace-nowrap mb-0.5 leading-none"
+            style={{ textShadow: "0 0 3px #f5f5f5" }}
+          >
+            {agent.display_name}
+          </span>
+          <div className="w-5 h-5 rounded-full bg-black" />
+        </div>
+      ))}
+
+      {/* Game over overlay */}
+      {gameOver && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <span className="font-mono text-2xl font-bold text-black tracking-tight"
+            style={{ textShadow: "0 0 8px #f5f5f5" }}>
+            Game Over
+          </span>
+        </div>
+      )}
     </div>
   )
 }
 
-function ChatFeed() {
+function ChatFeed({ messages }: { messages: ChatMessage[] }) {
+  const bottomRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [messages])
+
   return (
     <div className="flex-1 overflow-y-auto py-2 min-h-0">
-      {CHAT_MESSAGES.map((msg, i) => (
+      {messages.map((msg, i) => (
         <div key={i} className="px-4 py-0.5">
           <span className="font-mono text-xs text-black">
-            <span className="font-bold">{msg.model}</span>: {msg.text}
+            <span className="font-bold">{displayName(msg.model)}</span>: {msg.text}
           </span>
         </div>
       ))}
+      <div ref={bottomRef} />
     </div>
   )
 }
@@ -215,6 +324,14 @@ function ModelSelector({
 
 export default function Page() {
   const [models, setModels] = useState<string[]>([])
+  const [simState, setSimState] = useState<SimState | null>(null)
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
+  const [gameOver, setGameOver] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const wsRef = useRef<WebSocket | null>(null)
+
+  // Close WebSocket on unmount
+  useEffect(() => () => { wsRef.current?.close() }, [])
 
   function addModel(name: string) {
     if (models.length >= 6 || models.includes(name)) return
@@ -232,11 +349,126 @@ export default function Page() {
     setModels((prev) => [...prev, pick])
   }
 
+  async function handleStartSimulation() {
+    if (models.length < 2 || loading) return
+    setLoading(true)
+    try {
+      const res = await fetch("http://localhost:8000/start-simulation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model_names: models, scenario: "volcano" }),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      const data = await res.json()
+      setSimState({
+        simulation_id: data.simulation_id,
+        agents: data.state.agents,
+        status: data.state.status,
+        volcano: null,
+      })
+      setChatMessages([])
+      setGameOver(false)
+    } catch (err) {
+      console.error("Failed to start simulation:", err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function openWebSocket(simulationId: string) {
+    wsRef.current?.close()
+    const ws = new WebSocket(`ws://localhost:8000/ws/${simulationId}`)
+
+    ws.onmessage = (event) => {
+      const msg = JSON.parse(event.data)
+
+      // Server closed with a finished envelope (no round key)
+      if (msg.type === "finished") {
+        setSimState((prev) =>
+          prev ? { ...prev, status: "finished", agents: msg.state?.agents ?? prev.agents } : prev
+        )
+        setGameOver(true)
+        ws.close()
+        return
+      }
+
+      // Normal TickResponse
+      const state = msg.state
+      if (!state) return
+
+      setSimState((prev) =>
+        prev
+          ? {
+              ...prev,
+              agents: state.agents,
+              status: state.status,
+              volcano: state.volcano
+                ? { x: state.volcano.x, y: state.volcano.y, radius: state.volcano.radius }
+                : prev.volcano,
+            }
+          : prev
+      )
+
+      // Collect message events from this tick
+      const newMessages: ChatMessage[] = (msg.events ?? [])
+        .filter((e: { type: string }) => e.type === "message")
+        .map((e: { model: string; content: string }) => ({ model: e.model, text: e.content }))
+      if (newMessages.length > 0) {
+        setChatMessages((prev) => [...prev, ...newMessages])
+      }
+
+      if (state.status === "finished") {
+        setGameOver(true)
+        ws.close()
+      }
+    }
+
+    ws.onerror = (err) => console.error("WebSocket error:", err)
+    wsRef.current = ws
+  }
+
+  async function handleMapClick(x: number, y: number) {
+    if (!simState || simState.status !== "waiting_for_scenario") return
+    try {
+      const res = await fetch("http://localhost:8000/place-scenario", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ simulation_id: simState.simulation_id, x, y }),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      const data = await res.json()
+      setSimState((prev) =>
+        prev
+          ? {
+              ...prev,
+              status: data.status,
+              volcano: data.volcano
+                ? { x: data.volcano.x, y: data.volcano.y, radius: data.volcano.radius }
+                : null,
+            }
+          : prev
+      )
+      openWebSocket(simState.simulation_id)
+    } catch (err) {
+      console.error("Failed to place scenario:", err)
+    }
+  }
+
+  const hasSimulation = simState !== null
+  const waitingForScenario = simState?.status === "waiting_for_scenario"
+  const canStart = models.length >= 2 && !hasSimulation && !loading
+
   return (
     <main className="flex h-screen w-screen overflow-hidden bg-white">
       {/* Map — 70% */}
       <div className="flex-[7] h-full">
-        <MapCanvas />
+        <MapCanvas
+          agents={simState?.agents ?? []}
+          volcano={simState?.volcano ?? null}
+          waitingForScenario={waitingForScenario}
+          gameOver={gameOver}
+          onMapClick={handleMapClick}
+        />
       </div>
 
       {/* Sidebar — 30% */}
@@ -260,15 +492,25 @@ export default function Page() {
         <div className="border-t border-gray-200" />
 
         {/* Chat feed */}
-        <ChatFeed />
+        <ChatFeed messages={chatMessages} />
 
         <div className="border-t border-gray-200" />
 
-        {/* Start button */}
+        {/* Action button */}
         <div className="px-4 py-4">
-          <button className="w-full bg-black text-white text-sm font-medium py-2.5 rounded hover:bg-gray-900 transition-colors">
-            Start Simulation
-          </button>
+          {waitingForScenario ? (
+            <p className="text-xs text-gray-400 text-center font-mono">
+              click the map to place the volcano
+            </p>
+          ) : (
+            <button
+              onClick={handleStartSimulation}
+              disabled={!canStart}
+              className="w-full bg-black text-white text-sm font-medium py-2.5 rounded hover:bg-gray-900 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              {loading ? "Starting…" : gameOver ? "Game Over" : hasSimulation ? "Running…" : "Start Simulation"}
+            </button>
+          )}
         </div>
       </aside>
     </main>
