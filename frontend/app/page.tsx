@@ -1,65 +1,201 @@
-import Image from "next/image";
+"use client"
 
-export default function Home() {
+import { useState } from "react"
+
+const CHAT_MESSAGES = [
+  { model: "gpt2", text: "no thoughts just vibes 💀" },
+  { model: "Mistral-7B", text: "literally carrying rn" },
+  { model: "gpt2", text: "the lava said what 😭" },
+  { model: "Mistral-7B", text: "forming alliance with nobody lol" },
+]
+
+const RANDOM_POOL = [
+  "gpt2",
+  "mistralai/Mistral-7B-v0.1",
+  "tiiuae/falcon-7b",
+  "facebook/opt-1.3b",
+  "EleutherAI/gpt-neo-1.3B",
+  "bigscience/bloom-560m",
+  "microsoft/phi-2",
+  "google/flan-t5-base",
+]
+
+function displayName(modelName: string) {
+  return modelName.split("/").at(-1) ?? modelName
+}
+
+function MapCanvas() {
+  const gridSize = 40
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <div className="relative w-full h-full bg-[#f5f5f5] overflow-hidden">
+      {/* Vertical grid lines */}
+      {Array.from({ length: 50 }).map((_, i) => (
+        <div
+          key={`v-${i}`}
+          className="absolute top-0 bottom-0 w-px bg-[#e8e8e8]"
+          style={{ left: i * gridSize }}
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+      ))}
+      {/* Horizontal grid lines */}
+      {Array.from({ length: 50 }).map((_, i) => (
+        <div
+          key={`h-${i}`}
+          className="absolute left-0 right-0 h-px bg-[#e8e8e8]"
+          style={{ top: i * gridSize }}
+        />
+      ))}
     </div>
-  );
+  )
+}
+
+function ChatFeed() {
+  return (
+    <div className="flex-1 overflow-y-auto py-2 min-h-0">
+      {CHAT_MESSAGES.map((msg, i) => (
+        <div key={i} className="px-4 py-0.5">
+          <span className="font-mono text-xs text-black">
+            <span className="font-bold">{msg.model}</span>: {msg.text}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function ModelSelector({
+  models,
+  onAdd,
+  onRemove,
+  onRandom,
+}: {
+  models: string[]
+  onAdd: (name: string) => void
+  onRemove: (name: string) => void
+  onRandom: () => void
+}) {
+  const [input, setInput] = useState("")
+  const full = models.length >= 6
+
+  function handleAdd() {
+    const trimmed = input.trim()
+    if (!trimmed || full || models.includes(trimmed)) return
+    onAdd(trimmed)
+    setInput("")
+  }
+
+  return (
+    <div className="px-4 py-3 flex flex-col gap-2">
+      {/* Input row */}
+      <div className="flex gap-1.5">
+        <input
+          className="flex-1 min-w-0 border border-gray-200 rounded px-2.5 py-1.5 text-xs font-mono placeholder-gray-400 focus:outline-none focus:border-gray-400"
+          placeholder="mistralai/Mistral-7B-v0.1"
+          value={input}
+          disabled={full}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+        />
+        <button
+          onClick={handleAdd}
+          disabled={full || !input.trim()}
+          className="px-2.5 py-1.5 text-xs font-medium rounded border border-gray-200 hover:border-gray-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          Add
+        </button>
+      </div>
+
+      {/* Model list */}
+      {models.length > 0 && (
+        <ul className="flex flex-col gap-1">
+          {models.map((m) => (
+            <li key={m} className="flex items-center justify-between gap-2 group">
+              <span className="text-xs font-mono text-black truncate">{displayName(m)}</span>
+              <button
+                onClick={() => onRemove(m)}
+                className="text-gray-300 hover:text-black text-xs leading-none transition-colors shrink-0"
+                aria-label={`Remove ${m}`}
+              >
+                ✕
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* Random + counter */}
+      <div className="flex items-center justify-between">
+        <button
+          onClick={onRandom}
+          disabled={full}
+          className="text-xs text-gray-400 hover:text-black disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          + Random
+        </button>
+        <span className="text-xs text-gray-300">{models.length}/6</span>
+      </div>
+    </div>
+  )
+}
+
+export default function Page() {
+  const [models, setModels] = useState<string[]>([])
+
+  function addModel(name: string) {
+    if (models.length >= 6 || models.includes(name)) return
+    setModels((prev) => [...prev, name])
+  }
+
+  function removeModel(name: string) {
+    setModels((prev) => prev.filter((m) => m !== name))
+  }
+
+  function addRandom() {
+    const available = RANDOM_POOL.filter((m) => !models.includes(m))
+    if (!available.length || models.length >= 6) return
+    const pick = available[Math.floor(Math.random() * available.length)]
+    setModels((prev) => [...prev, pick])
+  }
+
+  return (
+    <main className="flex h-screen w-screen overflow-hidden bg-white">
+      {/* Map — 70% */}
+      <div className="flex-[7] h-full">
+        <MapCanvas />
+      </div>
+
+      {/* Sidebar — 30% */}
+      <aside className="flex-[3] h-full border-l border-gray-200 flex flex-col bg-white">
+        {/* Header */}
+        <div className="px-4 pt-5 pb-3">
+          <h1 className="text-2xl font-bold text-black tracking-tight">Unhinged</h1>
+          <p className="text-xs text-gray-400 mt-0.5">last model standing wins</p>
+        </div>
+
+        <div className="border-t border-gray-200" />
+
+        {/* Model selector */}
+        <ModelSelector
+          models={models}
+          onAdd={addModel}
+          onRemove={removeModel}
+          onRandom={addRandom}
+        />
+
+        <div className="border-t border-gray-200" />
+
+        {/* Chat feed */}
+        <ChatFeed />
+
+        <div className="border-t border-gray-200" />
+
+        {/* Start button */}
+        <div className="px-4 py-4">
+          <button className="w-full bg-black text-white text-sm font-medium py-2.5 rounded hover:bg-gray-900 transition-colors">
+            Start Simulation
+          </button>
+        </div>
+      </aside>
+    </main>
+  )
 }

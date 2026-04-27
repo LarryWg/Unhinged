@@ -155,12 +155,6 @@ def tick(req: TickRequest) -> TickResponse:
     return result
 
 
-@app.get("/simulation/{simulation_id}", response_model=SimulationState)
-def get_simulation(simulation_id: str) -> SimulationState:
-    sim = _get_or_404(simulation_id)
-    return sim
-
-
 @app.delete("/simulation/{simulation_id}")
 def delete_simulation(simulation_id: str) -> dict:
     _get_or_404(simulation_id)
@@ -228,7 +222,11 @@ async def simulation_ws(websocket: WebSocket, simulation_id: str) -> None:
         # Client closed the connection — nothing to do.
         pass
 
-
+@app.get("/simulation/{simulation_id}", response_model=SimulationState)
+def get_simulation(simulation_id: str) -> SimulationState:
+    sim = _get_or_404(simulation_id)
+    return sim
+    
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
