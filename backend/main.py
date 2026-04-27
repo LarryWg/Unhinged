@@ -3,7 +3,9 @@ import random
 import uuid
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
+import asyncio
+
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -153,6 +155,67 @@ def delete_simulation(simulation_id: str) -> dict:
     _get_or_404(simulation_id)
     del active_simulations[simulation_id]
     return {"deleted": simulation_id}
+
+
+# ---------------------------------------------------------------------------
+# WebSocket live feed
+# ---------------------------------------------------------------------------
+
+TICK_INTERVAL_SECONDS = 3
+
+
+@app.websocket("/ws/{simulation_id}")
+async def simulation_ws(websocket: WebSocket, simulation_id: str) -> None:
+    """
+    Streams the simulation live to the client.
+
+    - Sends one TickResponse JSON message every TICK_INTERVAL_SECONDS.
+    - Closes normally once status == 'finished'.
+    - Closes immediately with an error message if the simulation is not found
+      or is not yet in 'running' state when the first tick fires.
+    """
+    await websocket.accept()
+
+    sim = active_simulations.get(simulation_id)
+    if sim is None:
+        await websocket.send_json({"error": f"Simulation '{simulation_id}' not found."})
+        await websocket.close(code=1008)  # 1008 = Policy Violation / not found
+        return
+
+    try:
+        while True:
+            await asyncio.sleep(TICK_INTERVAL_SECONDS)
+
+            # Re-fetch in case another request mutated the state between ticks.
+            sim = active_simulations.get(simulation_id)
+            if sim is None:
+                await websocket.send_json({"error": "Simulation was deleted."})
+                await websocket.close(code=1008)
+                return
+
+            if sim.status == "waiting_for_scenario":
+                # Not started yet — skip this tick and wait for /place-scenario.
+                continue
+
+            if sim.status == "finished":
+                # Another route already finished it; send final state and close.
+                await websocket.send_json({"type": "finished", "state": sim.model_dump()})
+                await websocket.close(code=1000)
+                return
+
+            engine = SimulationEngine(sim)
+            result = engine.tick()
+            active_simulations[simulation_id] = result.state
+
+            await websocket.send_json(result.model_dump())
+
+            if result.state.status == "finished":
+                await websocket.close(code=1000)
+                return
+
+    except WebSocketDisconnect:
+        # Client closed the connection — nothing to do.
+        pass
 
 
 # ---------------------------------------------------------------------------
